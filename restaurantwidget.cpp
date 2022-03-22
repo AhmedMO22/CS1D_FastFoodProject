@@ -1,23 +1,22 @@
 #include "restaurantwidget.h"
 
-
-RestaurantWidget::RestaurantWidget(QWidget *parent) :
+RestaurantWidget::RestaurantWidget(const std::vector<Restaurant>& restaurantList, QWidget *parent) :
     QWidget(parent),
     ui(new Ui::RestaurantWidget)
 {
     ui->setupUi(this);
-    ui->initialLocationLineEdit->setText("Saddleback");
+    DatabaseHelper dbhelper;
+    dbhelper.populateRestaurants();
+    setInitialRestaurant(Restaurant::list[0]);
 
-    //Get a vector of restaurants from the data base
-    DatabaseHelper dbHelper;
-    std::vector<Restaurant> restaurantList = dbHelper.populateRestaurants();
-    dbHelper.createRestaurantTable(restaurantList);
-    dbHelper.createMenuTable(restaurantList);
-    dbHelper.createDistancesTable(restaurantList);
+    ui->tableWidget_tripRestaurants->setColumnCount(2);
+    ui->tableWidget_tripRestaurants->setHorizontalHeaderItem(0, new QTableWidgetItem("Name"));
+    ui->tableWidget_tripRestaurants->setHorizontalHeaderItem(1, new QTableWidgetItem("Distance"));
+    //ui->tableWidget_tripRestaurants->setHorizontalHeaderItem(0, new QTableWidgetItem("Subtotal"));
 
     //Create the restaurant buttons
     for (size_t i = 0; i < restaurantList.size(); ++i)
-        restaurantButtons.append(createButton(restaurantList[i].getName(), SLOT(restaurantClicked())));
+        restaurantButtons.append(createButton(restaurantList[i], SLOT(restaurantClicked())));
 
     //Create Grid for restaurant icons
     QGridLayout *mainLayout = new QGridLayout(ui->scrollArea_restaurants);
@@ -32,19 +31,44 @@ RestaurantWidget::RestaurantWidget(QWidget *parent) :
         mainLayout->addWidget(restaurantButtons[i], row, col);
         col++;
 
-        if (col >= MAX_COLZ)
+        if (col >= MAX_COL)
         {
             row++;
             col = 0;
         }
-
     }
-
 }
 
 RestaurantWidget::~RestaurantWidget()
 {
     delete ui;
+}
+
+void RestaurantWidget::addRestaurantToTrip(Restaurant rest)
+{
+    visitedRestaurants.push_back(rest);
+    updateTableWidget();
+}
+
+void RestaurantWidget::setInitialRestaurant(Restaurant initial)
+{
+    this->initialRestaurant = initial;
+    ui->initialLocationLineEdit->setText(initialRestaurant.getName());
+}
+
+void RestaurantWidget::updateTableWidget()
+{
+    ui->tableWidget_tripRestaurants->setRowCount(visitedRestaurants.size());
+    for (unsigned int index = 0; index < visitedRestaurants.size(); index++)
+    {
+        QTableWidgetItem* restaurantName = new QTableWidgetItem(visitedRestaurants[index].getName());
+        ui->tableWidget_tripRestaurants->setItem(index, 0, restaurantName);
+        QTableWidgetItem* restaurantDistance = new QTableWidgetItem(QString::number(visitedRestaurants[index].getDistance(initialRestaurant.getID())));
+        ui->tableWidget_tripRestaurants->setItem(index, 1, restaurantDistance);
+        ui->tableWidget_tripRestaurants->item(index, 1)->setTextAlignment(Qt::AlignRight);
+//        QTableWidgetItem* restaurantSubtotal = new QTableWidgetItem(QString::number(0.00));
+//        ui->tableWidget_tripRestaurants->setItem(index, 2, restaurantSubtotal);
+    }
 }
 
 ///
@@ -71,7 +95,6 @@ void RestaurantWidget::on_confirmButton_pressed()
     emit transmit_cancel();
 }
 
-
 ///
 /// \brief RestaurantWidget::on_cancelButton_pressed
 ///
@@ -84,21 +107,48 @@ void RestaurantWidget::on_cancelButton_pressed()
 
 void RestaurantWidget::restaurantClicked()
 {
+    //Get the tile clicked and send to restaurant menu
+    Button *clickedButton = qobject_cast<Button *>(sender());
+    qDebug() << "Restaurant Clicked";
+    qDebug() << clickedButton->getTopText()->text();
 
-    QTextStream dprint(stdout);
-    //Get the tile clicked and send to restaurnt menu
-    RestaurantButton *clickedButton = qobject_cast<RestaurantButton *>(sender());
-    QString restName = clickedButton->text();
-    dprint << "Restaurant clicked: " << restName << "\n";
-
+    Restaurant temp = findRestaurant(clickedButton->getTopText()->text());
+    emit transmit_viewRestMenu(temp);
 }
 
-RestaurantButton *RestaurantWidget::createButton(const QString &text, const char *member)
+Button *RestaurantWidget::createButton(Restaurant rest, const char *member)
 {
-    RestaurantButton *button = new RestaurantButton(text);
+    Button *button = new Button(rest);
     connect(button, SIGNAL(clicked()), this, member);
     return button;
 }
 
+Restaurant RestaurantWidget::findRestaurant(QString restName)
+{
+    for (size_t i = 0; i < Restaurant::list.size(); i++)
 
+    {
+        if (restName == Restaurant::list[i].getName())
+        {
+            return Restaurant::list[i];
+        }
+    }
+
+    qDebug() << "Restaurant not found \n";
+    Restaurant temp;
+
+    return temp;
+}
+
+double RestaurantWidget::getTripDistance(std::vector<Restaurant>& visitedList) const
+{
+	double totalDistance = 0;
+	
+	for(int i = 0; i < visitedList.size() - 1; ++i)
+	{
+		totalDistance += visitedList[i].getDistance(visitedList[i+1]);
+	}
+	
+	return totalDistance;
+}
 
